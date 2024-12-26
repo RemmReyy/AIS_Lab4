@@ -7,12 +7,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import roc_auc_score, classification_report, roc_curve
 import matplotlib.pyplot as plt
-import kagglehub
-import os
+from mpl_toolkits.mplot3d import Axes3D
 import logging
 
-# Налаштування логування
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
+
 
 class FraudDetectionDataset(Dataset):
     def __init__(self, X, y):
@@ -49,21 +48,9 @@ class FraudDetectionNN(nn.Module):
 
 
 def load_and_preprocess_data():
-    path = kagglehub.dataset_download("valakhorasani/bank-transaction-dataset-for-fraud-detection")
-    files = [f for f in os.listdir(path) if f.endswith('.csv')]
-    file_name = files[0]
-    df = pd.read_csv(f"{path}/{file_name}")
-
-    numeric_columns = df.select_dtypes(include=['number']).columns
-    X = df[numeric_columns].to_numpy()
-
-    # Перевірка наявності isFraud
-    if 'isFraud' in df.columns:
-        y = df['isFraud'].to_numpy()
-    else:
-        from sklearn.ensemble import IsolationForest
-        iso_forest = IsolationForest(contamination=0.1, random_state=42)
-        y = (iso_forest.fit_predict(X) == -1).astype(int)
+    # Генерація синтетичних даних для прикладу
+    from sklearn.datasets import make_classification
+    X, y = make_classification(n_samples=1000, n_features=5, n_classes=2, random_state=42)
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
@@ -107,7 +94,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             scheduler.step()
 
         if (epoch + 1) % 10 == 0:
-            logging.info(f'Epoch [{epoch + 1}/{epochs}], Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}')
+            logging.info(
+                f'Epoch [{epoch + 1}/{epochs}], Train Loss: {train_losses[-1]:.4f}, Val Loss: {val_losses[-1]:.4f}')
 
     return train_losses, val_losses
 
@@ -154,6 +142,33 @@ def plot_results(train_losses, val_losses, predictions, actuals, auc_score):
     plt.show()
 
 
+def fuzzy_surface_view(model, feature1, feature2, resolution=50):
+    """
+    Візуалізація поверхні моделі для двох входів.
+    """
+    x = np.linspace(0, 1, resolution)
+    y = np.linspace(0, 1, resolution)
+    X, Y = np.meshgrid(x, y)
+
+    Z = np.zeros_like(X)
+    for i in range(resolution):
+        for j in range(resolution):
+            inputs = np.zeros(model.network[0].in_features)  # Кількість вхідних параметрів
+            inputs[feature1] = X[i, j]
+            inputs[feature2] = Y[i, j]
+            Z[i, j] = model(torch.FloatTensor(inputs).unsqueeze(0)).item()
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    surf = ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='k')
+    fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5)
+    ax.set_title('Поверхня моделі')
+    ax.set_xlabel('Feature 1')
+    ax.set_ylabel('Feature 2')
+    ax.set_zlabel('Output')
+    plt.show()
+
+
 def main():
     X_train, X_test, y_train, y_test = load_and_preprocess_data()
 
@@ -173,12 +188,7 @@ def main():
 
     plot_results(train_losses, val_losses, predictions, actuals, auc_score)
 
-    accuracy = np.mean((predictions > 0.5) == actuals)
-    print(f"\nТочність моделі на тестових даних: {accuracy:.4f}")
-
-    # Збереження моделі
-    torch.save(model.state_dict(), 'fraud_detection_model.pth')
-    logging.info("Модель збережено у файл 'fraud_detection_model.pth'.")
+    fuzzy_surface_view(model, feature1=0, feature2=1)  # Вибір перших двох ознак для візуалізації
 
 
 if __name__ == "__main__":
